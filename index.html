@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Explorer — Learn How Global Positioning Works</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        gps: {
+                            50: '#eef8ff',
+                            100: '#d9eeff',
+                            200: '#bce2ff',
+                            300: '#8ed1ff',
+                            400: '#59b6ff',
+                            500: '#3394ff',
+                            600: '#1b74f5',
+                            700: '#145de1',
+                            800: '#174bb6',
+                            900: '#19428f',
+                            950: '#142957',
+                        },
+                        space: {
+                            900: '#0a0e1a',
+                            800: '#111827',
+                            700: '#1a2235',
+                            600: '#243049',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.6s ease-out forwards; }
+        .section-card {
+            background: linear-gradient(135deg, rgba(17,24,39,0.95), rgba(26,34,53,0.95));
+            border: 1px solid rgba(59,130,246,0.15);
+            backdrop-filter: blur(10px);
+        }
+        .glow-blue {
+            box-shadow: 0 0 30px rgba(51,148,255,0.15), 0 0 60px rgba(51,148,255,0.05);
+        }
+        .nav-link { position: relative; }
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px; left: 0;
+            width: 0; height: 2px;
+            background: linear-gradient(90deg, #3394ff, #8ed1ff);
+            transition: width 0.3s ease;
+        }
+        .nav-link:hover::after, .nav-link.active::after { width: 100%; }
+        .range-slider {
+            -webkit-appearance: none; appearance: none;
+            width: 100%; height: 8px; border-radius: 4px;
+            background: #283040; outline: none;
+            margin: 12px 0 4px;
+            cursor: pointer;
+            border: 1px solid #3b4a60;
+        }
+        .range-slider::-webkit-slider-runnable-track {
+            height: 8px; background: #283040; border-radius: 4px;
+        }
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 20px; height: 20px; border-radius: 50%;
+            background: #3394ff; cursor: pointer;
+            box-shadow: 0 0 10px rgba(51,148,255,0.5);
+            margin-top: -7px;
+            border: 2px solid #0a0e1a;
+        }
+        .range-slider::-moz-range-track {
+            height: 8px; background: #283040; border-radius: 4px;
+            border: 1px solid #3b4a60;
+        }
+        .range-slider::-moz-range-thumb {
+            width: 18px; height: 18px; border-radius: 50%;
+            background: #3394ff; cursor: pointer;
+            box-shadow: 0 0 10px rgba(51,148,255,0.5);
+            border: 2px solid #0a0e1a;
+        }
+        .range-slider:hover::-webkit-slider-thumb { background: #59b6ff; transform: scale(1.1); }
+        .range-slider:hover::-moz-range-thumb { background: #59b6ff; }
+        .range-slider:focus { border-color: #3394ff; }
+        #trilat-canvas, #dop-canvas { cursor: crosshair; }
+        .stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+    </style>
+</head>
+<body class="bg-space-900 text-gray-200 min-h-screen relative overflow-x-hidden">
+
+    <canvas class="stars" id="stars-canvas"></canvas>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 z-50 bg-space-900/80 backdrop-blur-lg border-b border-white/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-gps-500 to-gps-700 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                    </div>
+                    <span class="text-lg font-bold text-white">GPS Explorer</span>
+                </div>
+                <div class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-400">
+                    <a href="#overview" class="nav-link hover:text-white transition-colors">Overview</a>
+                    <a href="#constellation" class="nav-link hover:text-white transition-colors">Satellites</a>
+                    <a href="#trilateration" class="nav-link hover:text-white transition-colors">Trilateration</a>
+                    <a href="#signals" class="nav-link hover:text-white transition-colors">Signals</a>
+                    <a href="#errors" class="nav-link hover:text-white transition-colors">Errors</a>
+                    <a href="#dop" class="nav-link hover:text-white transition-colors">DOP</a>
+                    <a href="#coordinates" class="nav-link hover:text-white transition-colors">Coordinates</a>
+                    <a href="#my-location" class="nav-link hover:text-white transition-colors">My Location</a>
+                    <a href="#quiz" class="nav-link hover:text-white transition-colors">Quiz</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="relative pt-24 pb-16 px-4 overflow-hidden" id="overview">
+        <div class="max-w-7xl mx-auto relative z-10">
+            <div class="text-center mb-12 animate-fade-in-up">
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gps-600/20 border border-gps-600/30 text-gps-300 text-sm font-medium mb-6">
+                    <span class="w-2 h-2 rounded-full bg-gps-400 animate-pulse"></span>
+                    Interactive Learning Tool
+                </div>
+                <h1 class="text-5xl sm:text-7xl font-black text-white tracking-tight mb-4">
+                    Global Positioning<br>
+                    <span class="bg-gradient-to-r from-gps-400 to-gps-600 bg-clip-text text-transparent">System</span>
+                </h1>
+                <p class="text-lg text-gray-400 max-w-2xl mx-auto leading-relaxed">
+                    Explore how 31 satellites orbiting 20,200 km above Earth work together to pinpoint your location within meters. Interactive visualizations, hands-on demos, and real math.
+                </p>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                <div class="section-card rounded-xl p-5 text-center glow-blue">
+                    <div class="text-3xl font-bold text-gps-400 font-mono">31</div>
+                    <div class="text-xs text-gray-400 mt-1">Active Satellites</div>
+                </div>
+                <div class="section-card rounded-xl p-5 text-center glow-blue">
+                    <div class="text-3xl font-bold text-gps-400 font-mono">20,200</div>
+                    <div class="text-xs text-gray-400 mt-1">Altitude (km)</div>
+                </div>
+                <div class="section-card rounded-xl p-5 text-center glow-blue">
+                    <div class="text-3xl font-bold text-gps-400 font-mono">~3m</div>
+                    <div class="text-xs text-gray-400 mt-1">Civilian Accuracy</div>
+                </div>
+                <div class="section-card rounded-xl p-5 text-center glow-blue">
+                    <div class="text-3xl font-bold text-gps-400 font-mono">11h 58m</div>
+                    <div class="text-xs text-gray-400 mt-1">Orbital Period</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- How GPS Works Overview -->
+    <section class="py-16 px-4 relative z-10">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </span>
+                    How GPS Works — The Big Picture
+                </h2>
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="bg-space-900/60 rounded-xl p-6 border border-white/5">
+                        <div class="text-4xl mb-3">&#x1F6F0;&#xFE0F;</div>
+                        <h3 class="font-semibold text-white mb-2">1. Satellites Broadcast</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed">Each GPS satellite continuously broadcasts its precise orbital position (ephemeris) and the exact time from its onboard atomic clock. These signals travel at the speed of light.</p>
+                    </div>
+                    <div class="bg-space-900/60 rounded-xl p-6 border border-white/5">
+                        <div class="text-4xl mb-3">&#x1F4E1;</div>
+                        <h3 class="font-semibold text-white mb-2">2. Receiver Measures Delay</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed">Your GPS receiver picks up signals from multiple satellites. By comparing the broadcast time with the arrival time, it calculates the <strong class="text-gps-300">pseudorange</strong> — the approximate distance to each satellite.</p>
+                    </div>
+                    <div class="bg-space-900/60 rounded-xl p-6 border border-white/5">
+                        <div class="text-4xl mb-3">&#x1F4CD;</div>
+                        <h3 class="font-semibold text-white mb-2">3. Trilateration</h3>
+                        <p class="text-sm text-gray-400 leading-relaxed">With distances from 4+ satellites, the receiver solves a system of equations to find its exact latitude, longitude, altitude, and correct its own clock error.</p>
+                    </div>
+                </div>
+                <div class="mt-8 bg-space-900/80 rounded-xl p-6 border border-gps-600/20">
+                    <h3 class="font-semibold text-gps-300 mb-3 text-sm uppercase tracking-wider">The Fundamental Equation</h3>
+                    <div class="text-center py-4">
+                        <div class="font-mono text-lg sm:text-xl text-white">
+                            d<sub>i</sub> = c &times; (t<sub>receiver</sub> &minus; t<sub>satellite_i</sub>)
+                        </div>
+                        <div class="text-sm text-gray-500 mt-3 max-w-lg mx-auto">
+                            Where <span class="text-gps-300 font-mono">d</span> = pseudorange, <span class="text-gps-300 font-mono">c</span> = speed of light (299,792,458 m/s), and <span class="text-gps-300 font-mono">t</span> = time
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-3 justify-center mt-4">
+                        <span class="px-3 py-1.5 rounded-lg bg-gps-600/20 text-gps-300 text-xs font-mono">1 nanosecond error = 0.3m position error</span>
+                        <span class="px-3 py-1.5 rounded-lg bg-gps-600/20 text-gps-300 text-xs font-mono">1 microsecond error = 300m position error</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Satellite Constellation -->
+    <section class="py-16 px-4 relative z-10" id="constellation">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </span>
+                    GPS Satellite Constellation
+                </h2>
+                <p class="text-gray-400 text-sm mb-6">The GPS constellation consists of 31 satellites in 6 orbital planes, inclined at 55 degrees to the equator. This ensures at least 4 satellites are visible from anywhere on Earth at any time.</p>
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <div class="bg-space-900/80 rounded-xl border border-white/5 p-4">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Constellation View (Top-Down)</span>
+                                <div class="flex items-center gap-2">
+                                    <button id="toggle-orbits" class="px-3 py-1 rounded-lg bg-gps-600/20 text-gps-300 text-xs hover:bg-gps-600/30 transition-colors">Toggle Orbits</button>
+                                    <button id="toggle-anim" class="px-3 py-1 rounded-lg bg-gps-600/20 text-gps-300 text-xs hover:bg-gps-600/30 transition-colors">Pause</button>
+                                </div>
+                            </div>
+                            <canvas id="constellation-canvas" width="700" height="500" class="w-full rounded-lg bg-space-900"></canvas>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Orbital Planes</h3>
+                            <div class="space-y-2" id="plane-legend"></div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Key Parameters</h3>
+                            <div class="space-y-2 text-xs">
+                                <div class="flex justify-between"><span class="text-gray-400">Semi-major axis</span><span class="text-gps-300 font-mono">26,559 km</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Altitude</span><span class="text-gps-300 font-mono">20,200 km</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Inclination</span><span class="text-gps-300 font-mono">55 deg</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Period</span><span class="text-gps-300 font-mono">11h 58m</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Orbital velocity</span><span class="text-gps-300 font-mono">3.87 km/s</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Satellites per plane</span><span class="text-gps-300 font-mono">~5-6</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Signal frequency L1</span><span class="text-gps-300 font-mono">1575.42 MHz</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Signal frequency L2</span><span class="text-gps-300 font-mono">1227.60 MHz</span></div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Visible Satellites</h3>
+                            <div class="text-center">
+                                <div class="text-4xl font-bold text-gps-400 font-mono" id="visible-count">0</div>
+                                <div class="text-xs text-gray-400 mt-1">currently above horizon</div>
+                                <div class="text-xs text-gray-500 mt-2">Min needed for 3D fix: <span class="text-gps-300 font-mono">4</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive Trilateration -->
+    <section class="py-16 px-4 relative z-10" id="trilateration">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                    </span>
+                    Interactive Trilateration Demo
+                </h2>
+                <p class="text-gray-400 text-sm mb-6">
+                    <strong class="text-gray-200">Drag the satellites</strong> (colored dots) to see how their range circles intersect. With 2 satellites you get 2 possible positions; with 3+ the solution becomes unique. The white dot shows the computed position.
+                </p>
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <div class="bg-space-900/80 rounded-xl border border-white/5 p-4">
+                            <canvas id="trilat-canvas" width="700" height="500" class="w-full rounded-lg bg-space-900"></canvas>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Satellites</h3>
+                            <div id="sat-controls" class="space-y-4"></div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Computed Position</h3>
+                            <div class="text-center" id="trilat-result">
+                                <span class="text-sm text-gray-400">Move satellites to see the intersection</span>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Why 4 Satellites?</h3>
+                            <p class="text-xs text-gray-400 leading-relaxed">In 2D, 3 circles can uniquely identify a point. In 3D, you need 4 spheres — 3 for spatial coordinates (x, y, z) plus 1 extra to solve for the receiver's <strong class="text-gps-300">clock bias</strong>, since consumer GPS receivers don't have atomic clocks.</p>
+                        </div>
+                        <button id="add-satellite" class="w-full px-4 py-2.5 rounded-xl bg-gps-600/20 text-gps-300 text-sm font-medium hover:bg-gps-600/30 transition-colors border border-gps-600/30">+ Add Satellite</button>
+                        <button id="reset-trilat" class="w-full px-4 py-2.5 rounded-xl bg-red-600/20 text-red-300 text-sm font-medium hover:bg-red-600/30 transition-colors border border-red-600/30">Reset</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Signal Timing -->
+    <section class="py-16 px-4 relative z-10" id="signals">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </span>
+                    GPS Signal &amp; Timing
+                </h2>
+                <p class="text-gray-400 text-sm mb-6">Adjust the satellite distance to see how signal travel time determines pseudorange. GPS signals travel at the speed of light — tiny timing errors cause significant position errors.</p>
+                <div class="grid lg:grid-cols-2 gap-6">
+                    <div>
+                        <div class="bg-space-900/80 rounded-xl border border-white/5 p-6">
+                            <div id="signal-chart" style="width:100%;height:350px;"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-4 text-sm">Signal Parameters</h3>
+                            <div class="space-y-5">
+                                <div>
+                                    <div class="flex justify-between text-xs mb-1.5">
+                                        <span class="text-gray-400">Satellite Distance</span>
+                                        <span class="text-gps-300 font-mono" id="dist-label">20,200 km</span>
+                                    </div>
+                                    <input type="range" id="sat-distance" min="20000" max="26000" value="20200" class="range-slider">
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs mb-1.5">
+                                        <span class="text-gray-400">Clock Error (ns)</span>
+                                        <span class="text-gps-300 font-mono" id="clock-err-label">0 ns</span>
+                                    </div>
+                                    <input type="range" id="clock-error" min="-100" max="100" value="0" class="range-slider">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Computed Values</h3>
+                            <div class="space-y-2 text-xs">
+                                <div class="flex justify-between"><span class="text-gray-400">True travel time</span><span class="text-gps-300 font-mono" id="travel-time">67.3 ms</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Measured travel time</span><span class="text-gps-300 font-mono" id="measured-time">67.3 ms</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">True range</span><span class="text-gps-300 font-mono" id="true-range">20,200 km</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Pseudorange</span><span class="text-gps-300 font-mono" id="pseudo-range">20,200 km</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Position error</span><span class="font-mono font-semibold" id="pos-error">0.0 m</span></div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">GPS Signal Structure</h3>
+                            <div class="space-y-1.5 text-xs text-gray-400">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-red-400"></span>
+                                    <span><strong class="text-gray-300">C/A Code</strong> — 1.023 MHz, civilian</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-yellow-400"></span>
+                                    <span><strong class="text-gray-300">P(Y) Code</strong> — 10.23 MHz, military</span>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="w-2 h-2 rounded-full bg-green-400"></span>
+                                    <span><strong class="text-gray-300">Nav Message</strong> — 50 bps, ephemeris data</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Error Sources -->
+    <section class="py-16 px-4 relative z-10" id="errors">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+                    </span>
+                    GPS Error Sources
+                </h2>
+                <p class="text-gray-400 text-sm mb-6">Toggle individual error sources on/off to see their contribution to total position error. Real GPS receivers must compensate for all of these simultaneously.</p>
+                <div class="grid lg:grid-cols-2 gap-6">
+                    <div>
+                        <div class="bg-space-900/80 rounded-xl border border-white/5 p-6">
+                            <div id="error-chart" style="width:100%;height:400px;"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-3" id="error-toggles"></div>
+                </div>
+                <div class="mt-6 bg-space-900/80 rounded-xl p-5 border border-white/5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-semibold text-white text-sm">Total Error Budget (1 sigma)</h3>
+                        <span class="text-gps-300 font-mono text-lg font-bold" id="total-error">0.0 m</span>
+                    </div>
+                    <div class="w-full h-6 bg-space-900 rounded-full overflow-hidden flex" id="error-budget-bar"></div>
+                    <div class="flex flex-wrap gap-3 mt-3" id="error-legend"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Dilution of Precision -->
+    <section class="py-16 px-4 relative z-10" id="dop">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                    </span>
+                    Dilution of Precision (DOP)
+                </h2>
+                <p class="text-gray-400 text-sm mb-6">
+                    DOP measures how satellite geometry affects position accuracy. <strong class="text-gray-200">Drag the 4 satellites</strong> around the sky to see how their arrangement changes precision. Spread-out satellites = low DOP = better accuracy.
+                </p>
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-2">
+                        <div class="bg-space-900/80 rounded-xl border border-white/5 p-4">
+                            <canvas id="dop-canvas" width="700" height="500" class="w-full rounded-lg bg-space-900"></canvas>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">DOP Values</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="flex justify-between text-xs mb-1"><span class="text-gray-400">GDOP (Geometric)</span><span class="font-mono font-semibold" id="gdop-val">--</span></div>
+                                    <div class="w-full h-2 bg-space-900 rounded-full overflow-hidden"><div class="h-full rounded-full bg-gps-500 transition-all duration-300" id="gdop-bar" style="width:0%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs mb-1"><span class="text-gray-400">PDOP (Position)</span><span class="font-mono font-semibold" id="pdop-val">--</span></div>
+                                    <div class="w-full h-2 bg-space-900 rounded-full overflow-hidden"><div class="h-full rounded-full bg-blue-500 transition-all duration-300" id="pdop-bar" style="width:0%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs mb-1"><span class="text-gray-400">HDOP (Horizontal)</span><span class="font-mono font-semibold" id="hdop-val">--</span></div>
+                                    <div class="w-full h-2 bg-space-900 rounded-full overflow-hidden"><div class="h-full rounded-full bg-green-500 transition-all duration-300" id="hdop-bar" style="width:0%"></div></div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs mb-1"><span class="text-gray-400">VDOP (Vertical)</span><span class="font-mono font-semibold" id="vdop-val">--</span></div>
+                                    <div class="w-full h-2 bg-space-900 rounded-full overflow-hidden"><div class="h-full rounded-full bg-yellow-500 transition-all duration-300" id="vdop-bar" style="width:0%"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">DOP Quality Scale</h3>
+                            <div class="space-y-1.5 text-xs">
+                                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-green-500"></span><span class="text-gray-300">1-2: Ideal</span></div>
+                                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-blue-500"></span><span class="text-gray-300">2-5: Excellent</span></div>
+                                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-yellow-500"></span><span class="text-gray-300">5-10: Good</span></div>
+                                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-orange-500"></span><span class="text-gray-300">10-20: Moderate</span></div>
+                                <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-red-500"></span><span class="text-gray-300">20+: Poor</span></div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Position Accuracy</h3>
+                            <div class="text-center">
+                                <div class="text-3xl font-bold font-mono" id="dop-accuracy">--</div>
+                                <div class="text-xs text-gray-400 mt-1">estimated horizontal accuracy</div>
+                                <div class="text-xs text-gray-500 mt-2">accuracy = HDOP x UERE (<span class="font-mono">~6m</span>)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Coordinate Systems -->
+    <section class="py-16 px-4 relative z-10" id="coordinates">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
+                    </span>
+                    Coordinate Systems
+                </h2>
+                <p class="text-gray-400 text-sm mb-4">GPS internally uses ECEF (Earth-Centered, Earth-Fixed) coordinates. Click on the map or use your device's GPS to see coordinates in multiple formats.</p>
+                <div class="flex items-center gap-3 mb-6">
+                    <button id="use-my-location-btn" class="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-gps-600 to-gps-700 text-white text-sm font-medium hover:from-gps-500 hover:to-gps-600 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+                        Use My Location
+                    </button>
+                    <span id="geoloc-status" class="text-xs text-gray-500"></span>
+                </div>
+                <div class="grid lg:grid-cols-2 gap-6">
+                    <div>
+                        <div class="bg-space-900/80 rounded-xl border border-white/5 p-4">
+                            <div id="coord-map" style="width:100%;height:400px;"></div>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">Geographic (WGS-84)</h3>
+                            <div class="space-y-2 text-xs">
+                                <div class="flex justify-between"><span class="text-gray-400">Latitude</span><span class="text-gps-300 font-mono" id="coord-lat">0.0000 deg</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Longitude</span><span class="text-gps-300 font-mono" id="coord-lng">0.0000 deg</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">DMS</span><span class="text-gps-300 font-mono text-right" id="coord-dms">--</span></div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">ECEF (Earth-Centered)</h3>
+                            <div class="space-y-2 text-xs">
+                                <div class="flex justify-between"><span class="text-gray-400">X</span><span class="text-green-300 font-mono" id="coord-x">0 m</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Y</span><span class="text-green-300 font-mono" id="coord-y">0 m</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Z</span><span class="text-green-300 font-mono" id="coord-z">0 m</span></div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">UTM</h3>
+                            <div class="space-y-2 text-xs">
+                                <div class="flex justify-between"><span class="text-gray-400">Zone</span><span class="text-yellow-300 font-mono" id="coord-zone">--</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Easting</span><span class="text-yellow-300 font-mono" id="coord-easting">-- m</span></div>
+                                <div class="flex justify-between"><span class="text-gray-400">Northing</span><span class="text-yellow-300 font-mono" id="coord-northing">-- m</span></div>
+                            </div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                            <h3 class="font-semibold text-white mb-3 text-sm">About WGS-84</h3>
+                            <p class="text-xs text-gray-400 leading-relaxed">The World Geodetic System 1984 is the reference frame used by GPS. It models Earth as an oblate spheroid with semi-major axis <span class="text-gps-300 font-mono">a = 6,378,137 m</span> and flattening <span class="text-gps-300 font-mono">f = 1/298.257223563</span>.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- My Location -->
+    <section class="py-16 px-4 relative z-10" id="my-location">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+                    </span>
+                    My Location — Live GPS Details
+                </h2>
+                <p class="text-gray-400 text-sm mb-6">Your device's GPS data in real-time. Hit the button below to request your position, then explore exactly what information the GPS receiver provides.</p>
+
+                <div class="flex items-center gap-3 mb-6">
+                    <button id="get-location-btn" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-gps-600 to-gps-700 text-white text-sm font-medium hover:from-gps-500 hover:to-gps-600 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+                        Get My Position
+                    </button>
+                    <button id="watch-location-btn" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 text-gray-300 text-sm font-medium hover:bg-white/10 transition-colors border border-white/10">
+                        <span class="w-2 h-2 rounded-full bg-gray-500" id="watch-indicator"></span>
+                        <span id="watch-btn-text">Watch Position (Live)</span>
+                    </button>
+                    <span class="text-xs text-gray-500" id="loc-status-text"></span>
+                </div>
+
+                <!-- Location not yet fetched placeholder -->
+                <div id="loc-placeholder" class="text-center py-12">
+                    <div class="text-6xl mb-4 opacity-30">&#x1F4E1;</div>
+                    <p class="text-gray-500 text-sm">Click "Get My Position" to request your device's GPS coordinates</p>
+                    <p class="text-gray-600 text-xs mt-2">Requires browser location permission. Works best on devices with GPS hardware.</p>
+                </div>
+
+                <!-- Location data (hidden until fetched) -->
+                <div id="loc-data" class="hidden">
+                    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5 text-center">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Latitude</div>
+                            <div class="text-xl font-bold text-gps-400 font-mono" id="my-lat">--</div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5 text-center">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Longitude</div>
+                            <div class="text-xl font-bold text-gps-400 font-mono" id="my-lng">--</div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5 text-center">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Accuracy</div>
+                            <div class="text-xl font-bold font-mono" id="my-accuracy">--</div>
+                            <div class="text-xs text-gray-500 mt-1">horizontal radius</div>
+                        </div>
+                        <div class="bg-space-900/80 rounded-xl p-5 border border-white/5 text-center">
+                            <div class="text-xs text-gray-400 uppercase tracking-wider mb-2">Altitude</div>
+                            <div class="text-xl font-bold text-green-400 font-mono" id="my-altitude">--</div>
+                            <div class="text-xs text-gray-500 mt-1" id="my-alt-accuracy"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid lg:grid-cols-2 gap-6">
+                        <!-- Left: All coordinate & measurement data -->
+                        <div class="space-y-4">
+                            <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                                <h3 class="font-semibold text-white mb-3 text-sm">Position Formats</h3>
+                                <div class="space-y-2 text-xs">
+                                    <div class="flex justify-between"><span class="text-gray-400">Decimal Degrees</span><span class="text-gps-300 font-mono" id="my-dd">--</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-400">DMS</span><span class="text-gps-300 font-mono text-right" id="my-dms">--</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-400">UTM Zone</span><span class="text-yellow-300 font-mono" id="my-utm-zone">--</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-400">UTM Easting</span><span class="text-yellow-300 font-mono" id="my-utm-e">--</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-400">UTM Northing</span><span class="text-yellow-300 font-mono" id="my-utm-n">--</span></div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                                    <h3 class="font-semibold text-white mb-3 text-sm">ECEF Coordinates</h3>
+                                    <div class="space-y-2 text-xs">
+                                        <div class="flex justify-between"><span class="text-gray-400">X</span><span class="text-green-300 font-mono" id="my-ecef-x">--</span></div>
+                                        <div class="flex justify-between"><span class="text-gray-400">Y</span><span class="text-green-300 font-mono" id="my-ecef-y">--</span></div>
+                                        <div class="flex justify-between"><span class="text-gray-400">Z</span><span class="text-green-300 font-mono" id="my-ecef-z">--</span></div>
+                                    </div>
+                                </div>
+                                <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                                    <h3 class="font-semibold text-white mb-3 text-sm">Motion Data</h3>
+                                    <div class="space-y-2 text-xs">
+                                        <div class="flex justify-between"><span class="text-gray-400">Speed</span><span class="text-gps-300 font-mono" id="my-speed">--</span></div>
+                                        <div class="flex justify-between"><span class="text-gray-400">Heading</span><span class="text-gps-300 font-mono" id="my-heading">--</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                                <h3 class="font-semibold text-white mb-3 text-sm">Position Quality</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span class="text-gray-400">Horizontal Accuracy</span>
+                                            <span class="font-mono font-semibold" id="my-h-acc-label">--</span>
+                                        </div>
+                                        <div class="w-full h-2 bg-space-900 rounded-full overflow-hidden">
+                                            <div class="h-full rounded-full transition-all duration-500" id="my-h-acc-bar" style="width:0%"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-xs mb-1">
+                                            <span class="text-gray-400">Vertical Accuracy</span>
+                                            <span class="font-mono font-semibold" id="my-v-acc-label">--</span>
+                                        </div>
+                                        <div class="w-full h-2 bg-space-900 rounded-full overflow-hidden">
+                                            <div class="h-full rounded-full transition-all duration-500" id="my-v-acc-bar" style="width:0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                                <h3 class="font-semibold text-white mb-3 text-sm">Timestamp &amp; GPS Time</h3>
+                                <div class="space-y-2 text-xs">
+                                    <div class="flex justify-between"><span class="text-gray-400">Fix Time</span><span class="text-gps-300 font-mono" id="my-timestamp">--</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-400">GPS Week</span><span class="text-gps-300 font-mono" id="my-gps-week">--</span></div>
+                                    <div class="flex justify-between"><span class="text-gray-400">GPS Time of Week</span><span class="text-gps-300 font-mono" id="my-gps-tow">--</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Accuracy visualization & explanation -->
+                        <div class="space-y-4">
+                            <div class="bg-space-900/80 rounded-xl border border-white/5 p-4">
+                                <h3 class="font-semibold text-white mb-3 text-sm text-center">Accuracy Circle</h3>
+                                <canvas id="accuracy-canvas" width="300" height="300" class="w-full rounded-lg bg-space-900"></canvas>
+                                <p class="text-xs text-gray-500 mt-2 text-center">The circle shows the 68% confidence region (1-sigma) around your fix</p>
+                            </div>
+                            <div class="bg-space-900/80 rounded-xl p-5 border border-white/5">
+                                <h3 class="font-semibold text-white mb-3 text-sm">What Your Device Reports</h3>
+                                <p class="text-xs text-gray-400 leading-relaxed">The browser Geolocation API exposes what the OS-level GPS receiver computes: position, accuracy, altitude, speed, and heading. The accuracy value is the radius of a 68% confidence circle — your true position has a 68% chance of being within this radius.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Accuracy History Chart -->
+                    <div class="mt-6 bg-space-900/80 rounded-xl border border-white/5 p-5">
+                        <h3 class="font-semibold text-white mb-3 text-sm">Position Fix History</h3>
+                        <div id="history-chart" style="width:100%;height:250px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quiz -->
+    <section class="py-16 px-4 relative z-10" id="quiz">
+        <div class="max-w-7xl mx-auto">
+            <div class="section-card rounded-2xl p-8 glow-blue">
+                <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                    <span class="w-10 h-10 rounded-lg bg-gps-600/30 flex items-center justify-center text-gps-400">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </span>
+                    Test Your Knowledge
+                </h2>
+                <p class="text-gray-400 text-sm mb-6">Answer these questions to check your understanding of GPS fundamentals.</p>
+                <div id="quiz-container" class="space-y-6"></div>
+                <div class="mt-8 flex items-center gap-4">
+                    <button id="check-quiz" class="px-6 py-3 rounded-xl bg-gradient-to-r from-gps-600 to-gps-700 text-white font-medium hover:from-gps-500 hover:to-gps-600 transition-all">Check Answers</button>
+                    <button id="reset-quiz" class="px-6 py-3 rounded-xl bg-white/5 text-gray-300 font-medium hover:bg-white/10 transition-colors border border-white/10">Reset Quiz</button>
+                    <div class="ml-auto text-lg font-bold font-mono" id="quiz-score"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 px-4 relative z-10 border-t border-white/5">
+        <div class="max-w-7xl mx-auto text-center text-sm text-gray-500">
+            <p>GPS Explorer — An interactive learning tool for understanding the Global Positioning System</p>
+            <p class="mt-2 text-xs text-gray-600">Built with Tailwind CSS &amp; Apache ECharts</p>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
